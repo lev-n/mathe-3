@@ -1,0 +1,68 @@
+/**
+ * Topic metadata (always loaded) and lazy loaders for the topic modules (one chunk per topic).
+ */
+import type { TopicId, TopicMeta, TopicModule } from '../core/types';
+
+export const TOPICS: readonly TopicMeta[] = [
+  { id: 'zahlen', title: 'Zahlen bis 1000', shortTitle: 'Zahlen', description: 'Hunderter, Zehner und Einer, der Zahlenstrahl, Runden', color: 'zahlen' },
+  // Kopfrechnen first: written methods come late in many school years, and understanding comes before the algorithm (docs/research.md G4, §2.3).
+  { id: 'kopfrechnen', title: 'Kopfrechnen und Einmaleins', shortTitle: 'Kopfrechnen', description: 'Einmaleins, Rechnen in Schritten, Teilen mit Rest', color: 'kopfrechnen' },
+  { id: 'schriftlich', title: 'Schriftlich rechnen', shortTitle: 'Schriftlich', description: 'Plus und Minus untereinander', color: 'schriftlich' },
+  { id: 'groessen', title: 'Geld, Längen, Zeit, Gewicht', shortTitle: 'Größen', description: 'Euro und Cent, Kilometer, die Uhr, Gramm und Kilogramm', color: 'groessen' },
+  { id: 'geometrie', title: 'Geometrie', shortTitle: 'Geometrie', description: 'Figuren, Körper, Würfelnetze, Spiegeln, Fläche und Umfang', color: 'geometrie' },
+  { id: 'daten', title: 'Daten und Zufall', shortTitle: 'Daten', description: 'Tabellen, Diagramme, Fahrpläne, Chancen', color: 'daten' },
+  { id: 'sachaufgaben', title: 'Sachaufgaben', shortTitle: 'Sachaufgaben', description: 'Geschichten aus dem Alltag lösen', color: 'sachaufgaben' },
+];
+
+const LOADERS: Record<TopicId, () => Promise<{ default: TopicModule }>> = {
+  zahlen: () => import('./zahlen'),
+  kopfrechnen: () => import('./kopfrechnen'),
+  schriftlich: () => import('./schriftlich'),
+  groessen: () => import('./groessen'),
+  geometrie: () => import('./geometrie'),
+  daten: () => import('./daten'),
+  sachaufgaben: () => import('./sachaufgaben'),
+};
+
+const cache = new Map<TopicId, Promise<TopicModule>>();
+const loaded = new Map<TopicId, TopicModule>();
+
+export function isTopicId(id: string): id is TopicId {
+  return Object.prototype.hasOwnProperty.call(LOADERS, id);
+}
+
+export function getTopicMeta(id: TopicId): TopicMeta {
+  const meta = TOPICS.find((t) => t.id === id);
+  if (!meta) throw new Error(`Unknown topic ${id}`);
+  return meta;
+}
+
+export function loadTopic(id: TopicId): Promise<TopicModule> {
+  let p = cache.get(id);
+  if (!p) {
+    p = LOADERS[id]().then((m) => {
+      loaded.set(id, m.default);
+      return m.default;
+    });
+    p.catch(() => cache.delete(id));
+    cache.set(id, p);
+  }
+  return p;
+}
+
+/** The module if loadTopic() has already delivered it, else undefined (no loading starts). */
+export function loadedTopic(id: TopicId): TopicModule | undefined {
+  return loaded.get(id);
+}
+
+export function loadAllTopics(): Promise<TopicModule[]> {
+  return Promise.all(TOPICS.map((t) => loadTopic(t.id)));
+}
+
+/** Skill ids are `${topicId}.${slug}`. */
+export function topicOfSkill(skillId: string): TopicId {
+  const id = skillId.split('.')[0];
+  if (!isTopicId(id)) throw new Error(`Skill id without valid topic prefix: ${skillId}`);
+  return id;
+}
+
